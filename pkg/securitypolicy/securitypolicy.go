@@ -24,8 +24,9 @@ const (
 
 // PolicyConfig contains toml or JSON config for security policy.
 type PolicyConfig struct {
-	AllowAll   bool              `json:"allow_all" toml:"allow_all"`
-	Containers []ContainerConfig `json:"containers" toml:"container"`
+	AllowAll     bool              `json:"allow_all" toml:"allow_all"`
+	MutateEnvVar bool              `json:"mutate_envvar" toml:"mutate_envvar"`
+	Containers   []ContainerConfig `json:"containers" toml:"container"`
 }
 
 // AuthConfig contains toml or JSON config for registry authentication.
@@ -153,6 +154,13 @@ type SecurityPolicy struct {
 	// standpoint. Policy enforcement isn't actually off as the policy is "allow
 	// everything".
 	AllowAll bool `json:"allow_all"`
+	// MutateEnvVar when set to true is an enforcement mode that may change
+	// incoming container group admissions to comply with the security policy.
+	// For example, when MutateEnvVar is true container group environment
+	// variables that are not included in the policy are redacted. If this flag
+	// is false, the unexpected environment variable would block the container's
+	// admission to the group.
+	MutateEnvVar bool `json:"mutating_admission" toml:"mutating_admission"`
 	// One or more containers that are allowed to run
 	Containers Containers `json:"containers"`
 }
@@ -240,13 +248,14 @@ func CreateContainerPolicy(
 }
 
 // NewSecurityPolicy creates a new SecurityPolicy from the provided values.
-func NewSecurityPolicy(allowAll bool, containers []*Container) *SecurityPolicy {
+func NewSecurityPolicy(allowAll bool, mutateEnvVar bool, containers []*Container) *SecurityPolicy {
 	containersMap := map[string]Container{}
 	for i, c := range containers {
 		containersMap[strconv.Itoa(i)] = *c
 	}
 	return &SecurityPolicy{
-		AllowAll: allowAll,
+		AllowAll:     allowAll,
+		MutateEnvVar: mutateEnvVar,
 		Containers: Containers{
 			Elements: containersMap,
 		},

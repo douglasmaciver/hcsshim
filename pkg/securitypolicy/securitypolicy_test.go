@@ -583,7 +583,11 @@ func Test_EnforceEnvironmentVariablePolicy_NotAllMatches(t *testing.T) {
 		envVars = append(envVars, generateNeverMatchingEnvironmentVariable(testRand))
 		err = tc.policy.enforceEnvironmentVariablePolicy(tc.containerID, envVars)
 
-		// not getting an error means something is broken
+		// Not getting an error means something is broken unless operating
+		// in MutateEnvVar mode.
+		if tc.policy.MutateEnvVar {
+			return err == nil
+		}
 		return err != nil
 	}
 
@@ -1079,6 +1083,10 @@ func randString(r *rand.Rand, len int32) string {
 	}
 
 	return s.String()
+}
+
+func randBool(r *rand.Rand) bool {
+	return r.Int()&0x01 == 1
 }
 
 func randMinMax(r *rand.Rand, min int32, max int32) int32 {

@@ -6,12 +6,14 @@ package securitypolicy
 import (
 	"errors"
 	"fmt"
+	"math/rand"
 	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	oci "github.com/opencontainers/runtime-spec/specs-go"
 
@@ -192,6 +194,9 @@ type StandardSecurityPolicyEnforcer struct {
 	// DefaultEnvs are environment variable constraints for variables added
 	// by CRI and GCS
 	DefaultEnvs []EnvRuleConfig
+	// Security policy enforcement allows mutation of environment vars to
+	// satisfy policy
+	MutateEnvVar bool
 }
 
 var _ SecurityPolicyEnforcer = (*StandardSecurityPolicyEnforcer)(nil)
@@ -218,6 +223,7 @@ func NewStandardSecurityPolicyEnforcer(
 		ContainerIndexToContainerIds: map[int]map[string]struct{}{},
 		startedContainers:            map[string]struct{}{},
 		mutex:                        &sync.Mutex{},
+		MutateEnvVar:                 true,
 	}
 }
 
@@ -543,8 +549,10 @@ func (pe *StandardSecurityPolicyEnforcer) enforceEnvironmentVariablePolicy(conta
 	// containers that are possible matches for this containerID based
 	// on the image overlay layout and command line
 	possibleIndices := pe.possibleIndicesForID(containerID)
+	seed := rand.NewSource(time.Now().UnixNano())
+	suffixRand := rand.New(seed)
 
-	for _, envVariable := range envList {
+	for i, envVariable := range envList {
 		matchingRuleFoundForSomeContainer := false
 		for _, possibleIndex := range possibleIndices {
 			envRules := pe.Containers[possibleIndex].EnvRules
@@ -559,7 +567,12 @@ func (pe *StandardSecurityPolicyEnforcer) enforceEnvironmentVariablePolicy(conta
 		}
 
 		if !matchingRuleFoundForSomeContainer {
-			return fmt.Errorf("env variable %s unmatched by policy rule", envVariable)
+			if pe.MutateEnvVar {
+				// todo@douglasmaciver: Determine the best redaction string construction.
+				envList[i] = fmt.Sprintf("_REDACTED_BY_POLICY_rand%d=%q", suffixRand.Uint32(), envVariable)
+			} else {
+				return fmt.Errorf("env variable %s unmatched by policy rule", envVariable)
+			}
 		}
 	}
 
